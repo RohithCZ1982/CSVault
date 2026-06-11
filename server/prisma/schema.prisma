@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  level        String   @default("FOUNDATION")
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  progress      Progress[]
+  chatMessages  ChatMessage[]
+  testResults   TestResult[]
+  studyPlans    StudyPlan[]
+  bookmarks     Bookmark[]
+}
+
+model Topic {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  level       String
+  subject     String
+  section     String?
+  act         String?
+  content     String
+  plainEnglish String
+  keywords    String
+  amendment   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   Question[]
+  progress    Progress[]
+  bookmarks   Bookmark[]
+}
+
+model Question {
+  id          String   @id @default(cuid())
+  topicId     String
+  topic       Topic    @relation(fields: [topicId], references: [id])
+  type        String   // MCQ, DESCRIPTIVE, CASE_STUDY
+  level       String
+  subject     String
+  difficulty  String   @default("MEDIUM")
+  question    String
+  options     String?  // JSON array for MCQ
+  answer      String
+  explanation String
+  year        Int?
+  createdAt   DateTime @default(now())
+
+  testResultItems TestResultItem[]
+}
+
+model TestResult {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  subject     String
+  level       String
+  totalQ      Int
+  correctQ    Int
+  score       Float
+  timeTaken   Int      // seconds
+  createdAt   DateTime @default(now())
+
+  items       TestResultItem[]
+}
+
+model TestResultItem {
+  id           String     @id @default(cuid())
+  testResultId String
+  testResult   TestResult @relation(fields: [testResultId], references: [id])
+  questionId   String
+  question     Question   @relation(fields: [questionId], references: [id])
+  userAnswer   String
+  isCorrect    Boolean
+}
+
+model Progress {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id])
+  status    String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
+  score     Float?
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, topicId])
+}
+
+model StudyPlan {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  subject   String
+  day       String
+  duration  Int      // minutes
+  completed Boolean  @default(false)
+  date      DateTime
+  createdAt DateTime @default(now())
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  role      String   // user, assistant
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  title       String
+  category    String   // RESOLUTION, MINUTES, NOTICE, AUDIT_REPORT, etc.
+  description String
+  template    String
+  tags        String
+  createdAt   DateTime @default(now())
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  topicId   String
+  topic     Topic    @relation(fields: [topicId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, topicId])
+}
