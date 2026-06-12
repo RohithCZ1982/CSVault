@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -882,6 +883,22 @@ async function main() {
     documents.map(d => prisma.document.create({ data: d }))
   );
   console.log(`Created ${createdDocs.length} documents`);
+
+  const adminEmail = process.env.ADMIN_EMAIL || 'admin@csvault.com';
+  const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: { role: 'ADMIN', plan: 'PREMIUM', planExpiresAt: null },
+    create: {
+      email: adminEmail,
+      name: 'Admin',
+      passwordHash: await bcrypt.hash(adminPassword, 12),
+      level: 'PROFESSIONAL',
+      role: 'ADMIN',
+      plan: 'PREMIUM',
+    },
+  });
+  console.log(`Admin user ready: ${adminEmail}`);
 
   console.log('Seeding complete!');
 }

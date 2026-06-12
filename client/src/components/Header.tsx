@@ -11,6 +11,7 @@ const pageTitles: Record<string, string> = {
   '/study-planner': 'Study Planner',
   '/compliance-simulator': 'Compliance Simulator',
   '/profile': 'My Profile',
+  '/admin': 'Admin Dashboard',
 };
 
 export default function Header({ onMenuClick }: { onMenuClick: () => void }) {

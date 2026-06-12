@@ -11,6 +11,7 @@ export default function Auth() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const { setAuth } = useAuthStore();
   const navigate = useNavigate();
 
@@ -18,10 +19,18 @@ export default function Auth() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setSuccess('');
     try {
       const endpoint = mode === 'login' ? '/auth/login' : '/auth/register';
       const payload = mode === 'login' ? { email: form.email, password: form.password } : form;
       const { data } = await api.post(endpoint, payload);
+      if (mode === 'register') {
+        // Don't auto-login — send the user back to sign in with their new account
+        setMode('login');
+        setForm(f => ({ ...f, password: '' }));
+        setSuccess('Account created successfully. Please sign in.');
+        return;
+      }
       setAuth(data.user, data.token);
       navigate('/dashboard');
     } catch (err: unknown) {
@@ -58,7 +67,7 @@ export default function Auth() {
             {(['login', 'register'] as const).map(m => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setError(''); }}
+                onClick={() => { setMode(m); setError(''); setSuccess(''); }}
                 className={`flex-1 py-2 rounded-md text-sm font-medium capitalize transition-all ${
                   mode === m ? 'bg-primary-600 text-white' : 'text-dark-muted hover:text-dark-text'
                 }`}
@@ -134,6 +143,12 @@ export default function Auth() {
             {error && (
               <div className="bg-red-900/30 border border-red-800 text-red-400 text-sm rounded-lg px-4 py-3">
                 {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="bg-emerald-900/30 border border-emerald-800 text-emerald-400 text-sm rounded-lg px-4 py-3">
+                {success}
               </div>
             )}
 

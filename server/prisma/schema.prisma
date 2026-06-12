@@ -1,9 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
+  engineType = "binary"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -13,7 +14,12 @@ model User {
   name         String
   passwordHash String
   level        String   @default("FOUNDATION")
+  role         String   @default("USER") // USER, ADMIN
+  plan         String   @default("TRIAL") // TRIAL, FULL, PREMIUM
+  planStartedAt DateTime @default(now())
+  planExpiresAt DateTime?
   avatarUrl    String?
+  lastActiveAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

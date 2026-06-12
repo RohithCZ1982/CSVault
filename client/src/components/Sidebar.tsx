@@ -3,19 +3,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard, BookOpen, Brain, FileText, Calendar,
   MessageSquare, ShieldCheck, User, LogOut, X, Vault,
-  ChevronRight,
+  ChevronRight, Shield, Lock,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { hasFeature, isPlanExpired, PLAN_LABELS, Feature, Plan } from '../utils/plans';
 import clsx from 'clsx';
 
-const navItems = [
+const navItems: { icon: typeof LayoutDashboard; label: string; to: string; feature?: Feature }[] = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
-  { icon: BookOpen, label: 'Law Explorer', to: '/law-explorer' },
-  { icon: Brain, label: 'Practice Hub', to: '/practice' },
-  { icon: MessageSquare, label: 'AI Assistant', to: '/ai-assistant' },
-  { icon: FileText, label: 'Documents', to: '/documents' },
-  { icon: Calendar, label: 'Study Planner', to: '/study-planner' },
-  { icon: ShieldCheck, label: 'Compliance Sim', to: '/compliance-simulator' },
+  { icon: BookOpen, label: 'Law Explorer', to: '/law-explorer', feature: 'lawExplorer' },
+  { icon: Brain, label: 'Practice Hub', to: '/practice', feature: 'practice' },
+  { icon: MessageSquare, label: 'AI Assistant', to: '/ai-assistant', feature: 'ai' },
+  { icon: FileText, label: 'Documents', to: '/documents', feature: 'documents' },
+  { icon: Calendar, label: 'Study Planner', to: '/study-planner', feature: 'studyPlanner' },
+  { icon: ShieldCheck, label: 'Compliance Sim', to: '/compliance-simulator', feature: 'compliance' },
 ];
 
 interface SidebarProps {
@@ -45,39 +46,61 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </div>
       </div>
 
-      {/* User Level Badge */}
-      <div className="px-4 py-3 border-b border-dark-border">
+      {/* User Level + Plan Badge */}
+      <div className="px-4 py-3 border-b border-dark-border space-y-2">
         <div className="flex items-center justify-between bg-primary-900/30 rounded-lg px-3 py-2">
           <span className="text-xs text-primary-300">Level</span>
           <span className="text-xs font-semibold text-primary-400 badge-blue">
             {user?.level || 'FOUNDATION'}
           </span>
         </div>
+        <div className="flex items-center justify-between bg-gold-600/10 rounded-lg px-3 py-2">
+          <span className="text-xs text-gold-400">Plan</span>
+          <span className={clsx('text-xs font-semibold', isPlanExpired(user) ? 'badge-red' : 'badge-gold')}>
+            {user?.role === 'ADMIN' ? 'Admin' : isPlanExpired(user) ? 'Expired' : PLAN_LABELS[(user?.plan || 'TRIAL') as Plan] || user?.plan}
+          </span>
+        </div>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-        {navItems.map(({ icon: Icon, label, to }) => (
-          <NavLink
-            key={to}
-            to={to}
-            onClick={onClose}
-            className={({ isActive }) => clsx(
-              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group',
-              isActive
-                ? 'bg-primary-600/20 text-primary-400 border border-primary-600/30'
-                : 'text-dark-muted hover:text-dark-text hover:bg-dark-border/50'
-            )}
-          >
-            {({ isActive }) => (
-              <>
-                <Icon className={clsx('w-4.5 h-4.5 flex-shrink-0', isActive ? 'text-primary-400' : 'text-dark-muted group-hover:text-dark-text')} size={18} />
+        {[...navItems, ...(user?.role === 'ADMIN' ? [{ icon: Shield, label: 'Admin', to: '/admin', feature: undefined }] : [])].map(({ icon: Icon, label, to, feature }) => {
+          const locked = feature !== undefined && !hasFeature(user, feature);
+          if (locked) {
+            return (
+              <div
+                key={to}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-dark-muted/50 cursor-not-allowed select-none"
+                title="Not included in your plan"
+              >
+                <Icon className="w-4.5 h-4.5 flex-shrink-0" size={18} />
                 <span className="flex-1">{label}</span>
-                {isActive && <ChevronRight size={14} className="text-primary-400" />}
-              </>
-            )}
-          </NavLink>
-        ))}
+                <Lock size={13} className="text-dark-muted/60" />
+              </div>
+            );
+          }
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={onClose}
+              className={({ isActive }) => clsx(
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group',
+                isActive
+                  ? 'bg-primary-600/20 text-primary-400 border border-primary-600/30'
+                  : 'text-dark-muted hover:text-dark-text hover:bg-dark-border/50'
+              )}
+            >
+              {({ isActive }) => (
+                <>
+                  <Icon className={clsx('w-4.5 h-4.5 flex-shrink-0', isActive ? 'text-primary-400' : 'text-dark-muted group-hover:text-dark-text')} size={18} />
+                  <span className="flex-1">{label}</span>
+                  {isActive && <ChevronRight size={14} className="text-primary-400" />}
+                </>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
 
       {/* Bottom section */}
