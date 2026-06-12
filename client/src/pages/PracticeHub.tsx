@@ -85,7 +85,7 @@ export default function PracticeHub() {
             >
               <Link
                 to="/practice/test"
-                state={{ subject: sub.name, level: user?.level, count: 15 }}
+                state={{ subject: sub.name, level: user?.level, count: 10 }}
                 className={clsx(
                   'card hover:border-primary-700/50 hover:-translate-y-0.5 transition-all duration-200 group flex items-start gap-3',
                 )}

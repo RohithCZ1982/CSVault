@@ -16,6 +16,8 @@ const quickLinks = [
   { icon: Calendar, label: 'Study Plan', to: '/study-planner', desc: 'Plan your week', color: 'from-orange-600 to-orange-800' },
 ];
 
+const SUBJECT_COLORS = ['bg-primary-500', 'bg-purple-500', 'bg-emerald-500', 'bg-orange-500', 'bg-pink-500', 'bg-cyan-500'];
+
 const importantTopics = [
   { title: 'AGM Requirements', section: 'S. 96', subject: 'Company Law', priority: 'high' },
   { title: 'Board Composition', section: 'S. 149', subject: 'Company Law', priority: 'high' },
@@ -156,27 +158,25 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-4">
-            {[
-              { label: 'Company Law', progress: 65, color: 'bg-primary-500' },
-              { label: 'Securities Law', progress: 45, color: 'bg-purple-500' },
-              { label: 'Economic Laws', progress: 30, color: 'bg-emerald-500' },
-              { label: 'Secretarial Practice', progress: 55, color: 'bg-orange-500' },
-            ].map(({ label, progress, color }) => (
-              <div key={label}>
+            {(progressSummary?.bySubject || []).map(({ subject, percent, completed, totalTopics }: { subject: string; percent: number; completed: number; totalTopics: number }, i: number) => (
+              <div key={subject}>
                 <div className="flex justify-between text-sm mb-1.5">
-                  <span className="text-dark-text">{label}</span>
-                  <span className="text-dark-muted">{progress}%</span>
+                  <span className="text-dark-text">{subject}</span>
+                  <span className="text-dark-muted">{completed}/{totalTopics} · {percent}%</span>
                 </div>
                 <div className="h-2 bg-dark-border rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{ width: `${progress}%` }}
+                    animate={{ width: `${percent}%` }}
                     transition={{ delay: 0.3, duration: 0.8 }}
-                    className={`h-full ${color} rounded-full`}
+                    className={`h-full ${SUBJECT_COLORS[i % SUBJECT_COLORS.length]} rounded-full`}
                   />
                 </div>
               </div>
             ))}
+            {progressSummary && progressSummary.bySubject?.length === 0 && (
+              <p className="text-sm text-dark-muted">No topics available yet.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-3 gap-3 mt-5">

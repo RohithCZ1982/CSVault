@@ -33,13 +33,31 @@ progressRouter.post('/:topicId', authMiddleware, async (req: AuthRequest, res: R
 
 progressRouter.get('/summary', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const progress = await prisma.progress.findMany({ where: { userId: req.userId } });
+    const [progress, topics] = await Promise.all([
+      prisma.progress.findMany({
+        where: { userId: req.userId },
+        include: { topic: { select: { subject: true } } },
+      }),
+      prisma.topic.groupBy({ by: ['subject'], _count: { id: true } }),
+    ]);
     const total = progress.length;
     const completed = progress.filter(p => p.status === 'COMPLETED').length;
     const inProgress = progress.filter(p => p.status === 'IN_PROGRESS').length;
     const avgScore = progress.filter(p => p.score).reduce((s, p) => s + (p.score || 0), 0) / (progress.filter(p => p.score).length || 1);
 
-    res.json({ total, completed, inProgress, notStarted: total - completed - inProgress, avgScore });
+    const bySubject = topics.map(t => {
+      const subjectProgress = progress.filter(p => p.topic.subject === t.subject);
+      const subjectCompleted = subjectProgress.filter(p => p.status === 'COMPLETED').length;
+      return {
+        subject: t.subject,
+        totalTopics: t._count.id,
+        completed: subjectCompleted,
+        inProgress: subjectProgress.filter(p => p.status === 'IN_PROGRESS').length,
+        percent: Math.round((subjectCompleted / t._count.id) * 100),
+      };
+    });
+
+    res.json({ total, completed, inProgress, notStarted: total - completed - inProgress, avgScore, bySubject });
   } catch {
     res.status(500).json({ error: 'Server error' });
   }
