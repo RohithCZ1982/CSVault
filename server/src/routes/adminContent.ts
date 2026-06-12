@@ -203,3 +203,129 @@ adminContentRouter.delete('/documents/:id', async (req: AuthRequest, res: Respon
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// ── Bulk import (Excel) ────────────────────────────────────────
+// All-or-nothing: every row must be valid or nothing is imported.
+// Row numbers in errors are 1-based spreadsheet rows (row 1 = header).
+
+const MAX_BULK_ROWS = 1000;
+
+const bulkBodySchema = z.object({ rows: z.array(z.record(z.unknown())).min(1).max(MAX_BULK_ROWS) });
+
+interface RowError {
+  row: number;
+  message: string;
+}
+
+function zodRowMessage(err: z.ZodError): string {
+  return err.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+}
+
+function parseBulkRows<T>(
+  rows: unknown[],
+  schema: z.ZodType<T>
+): { parsed: { row: number; data: T }[]; errors: RowError[] } {
+  const parsed: { row: number; data: T }[] = [];
+  const errors: RowError[] = [];
+  rows.forEach((row, i) => {
+    const result = schema.safeParse(row);
+    if (result.success) parsed.push({ row: i + 2, data: result.data });
+    else errors.push({ row: i + 2, message: zodRowMessage(result.error) });
+  });
+  return { parsed, errors };
+}
+
+adminContentRouter.post('/topics/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows } = bulkBodySchema.parse(req.body);
+    const { parsed, errors } = parseBulkRows(rows, topicSchema);
+    if (errors.length > 0) {
+      return res.status(400).json({ error: `${errors.length} row(s) have errors — nothing was imported`, rowErrors: errors });
+    }
+    await prisma.topic.createMany({ data: parsed.map(p => p.data) });
+    res.json({ created: parsed.length });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+const bulkQuestionRowSchema = z.object({
+  topicTitle: z.string().min(1),
+  level: z.enum(LEVELS),
+  subject: z.string().min(1),
+  difficulty: z.enum(['EASY', 'MEDIUM', 'HARD']),
+  question: z.string().min(1),
+  options: z.array(z.string().min(1)).min(2).max(6),
+  answer: z.string().min(1),
+  explanation: z.string().min(1),
+  year: z.number().int().nullish(),
+});
+
+// Accept the answer as exact option text, a 1-based number, or a letter (A = first option)
+function resolveAnswer(answer: string, options: string[]): string | null {
+  const trimmed = answer.trim();
+  const exact = options.find(o => o === trimmed) || options.find(o => o.toLowerCase() === trimmed.toLowerCase());
+  if (exact) return exact;
+  let index = -1;
+  if (/^[1-9]$/.test(trimmed)) index = parseInt(trimmed) - 1;
+  else if (/^[A-Za-z]$/.test(trimmed)) index = trimmed.toUpperCase().charCodeAt(0) - 65;
+  return index >= 0 && index < options.length ? options[index] : null;
+}
+
+adminContentRouter.post('/questions/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows } = bulkBodySchema.parse(req.body);
+    const { parsed, errors } = parseBulkRows(rows, bulkQuestionRowSchema);
+
+    const topics = await prisma.topic.findMany({ select: { id: true, title: true } });
+    const topicByTitle = new Map(topics.map(t => [t.title.trim().toLowerCase(), t.id]));
+
+    const data: {
+      topicId: string; type: string; level: string; subject: string; difficulty: string;
+      question: string; options: string; answer: string; explanation: string; year: number | null;
+    }[] = [];
+    parsed.forEach(({ row, data: q }) => {
+      const topicId = topicByTitle.get(q.topicTitle.trim().toLowerCase());
+      if (!topicId) {
+        errors.push({ row, message: `topicTitle: no topic found with title "${q.topicTitle}"` });
+        return;
+      }
+      const answer = resolveAnswer(q.answer, q.options);
+      if (!answer) {
+        errors.push({ row, message: 'answer: must match one of the options (exact text, number 1-6, or letter A-F)' });
+        return;
+      }
+      data.push({
+        topicId, type: 'MCQ', level: q.level, subject: q.subject, difficulty: q.difficulty,
+        question: q.question, options: JSON.stringify(q.options), answer,
+        explanation: q.explanation, year: q.year ?? null,
+      });
+    });
+
+    if (errors.length > 0) {
+      errors.sort((a, b) => a.row - b.row);
+      return res.status(400).json({ error: `${errors.length} row(s) have errors — nothing was imported`, rowErrors: errors });
+    }
+    await prisma.question.createMany({ data });
+    res.json({ created: data.length });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+adminContentRouter.post('/documents/bulk', async (req: AuthRequest, res: Response) => {
+  try {
+    const { rows } = bulkBodySchema.parse(req.body);
+    const { parsed, errors } = parseBulkRows(rows, documentSchema);
+    if (errors.length > 0) {
+      return res.status(400).json({ error: `${errors.length} row(s) have errors — nothing was imported`, rowErrors: errors });
+    }
+    await prisma.document.createMany({ data: parsed.map(p => p.data) });
+    res.json({ created: parsed.length });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: err.errors });
+    res.status(500).json({ error: 'Server error' });
+  }
+});

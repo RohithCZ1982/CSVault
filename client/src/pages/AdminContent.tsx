@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { BookOpen, Brain, FileText, Plus, Pencil, Trash2, X, Search, Database } from 'lucide-react';
+import { BookOpen, Brain, FileText, Plus, Pencil, Trash2, X, Search, Database, Upload, Download, FileSpreadsheet, CheckCircle2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { api } from '../utils/api';
 import clsx from 'clsx';
 
@@ -304,12 +305,245 @@ function DocumentForm({ initial, onDone }: { initial: AdminDocument | null; onDo
   );
 }
 
+// ── Bulk Excel import ──────────────────────────────────────────
+
+const cell = (row: Record<string, unknown>, key: string) => String(row[key] ?? '').trim();
+
+interface ImportSpec {
+  noun: string;
+  instructions: string[];
+  sample: Record<string, string | number>[];
+  mapRow: (row: Record<string, unknown>) => Record<string, unknown>;
+}
+
+const IMPORT_SPECS: Record<Tab, ImportSpec> = {
+  topics: {
+    noun: 'topics',
+    instructions: [
+      'Required columns: title, description, level, subject, content, plainEnglish, keywords',
+      'Optional columns: section, act, amendment',
+      `level must be one of: ${LEVELS.join(', ')}`,
+    ],
+    sample: [{
+      title: 'Section 173 — Meetings of the Board',
+      description: 'Frequency and notice requirements for board meetings',
+      level: 'EXECUTIVE',
+      subject: 'Company Law',
+      section: 'Section 173',
+      act: 'Companies Act 2013',
+      content: 'Every company shall hold its first board meeting within 30 days of incorporation, and thereafter a minimum of 4 meetings every year…',
+      plainEnglish: 'Boards must meet at least 4 times a year, with no more than 120 days between two meetings.',
+      keywords: 'board meeting, notice, quorum',
+      amendment: '',
+    }],
+    mapRow: r => ({
+      title: cell(r, 'title'),
+      description: cell(r, 'description'),
+      level: cell(r, 'level').toUpperCase(),
+      subject: cell(r, 'subject'),
+      section: cell(r, 'section') || null,
+      act: cell(r, 'act') || null,
+      content: cell(r, 'content'),
+      plainEnglish: cell(r, 'plainEnglish'),
+      keywords: cell(r, 'keywords'),
+      amendment: cell(r, 'amendment') || null,
+    }),
+  },
+  questions: {
+    noun: 'questions',
+    instructions: [
+      'Required columns: topicTitle, level, subject, difficulty, question, option1, option2, answer, explanation',
+      'Optional columns: option3–option6, year',
+      'topicTitle must exactly match the title of an existing topic',
+      `level: ${LEVELS.join(' / ')} · difficulty: ${DIFFICULTIES.join(' / ')}`,
+      'answer can be the exact option text, a number (1–6), or a letter (A–F)',
+    ],
+    sample: [{
+      topicTitle: 'Section 96 — Annual General Meeting',
+      level: 'EXECUTIVE',
+      subject: 'Company Law',
+      difficulty: 'MEDIUM',
+      question: 'What is the maximum gap allowed between two Annual General Meetings?',
+      option1: '12 months',
+      option2: '15 months',
+      option3: '18 months',
+      option4: '6 months',
+      option5: '',
+      option6: '',
+      answer: '15 months',
+      explanation: 'Section 96 of the Companies Act 2013 allows a maximum of 15 months between two AGMs.',
+      year: 2023,
+    }],
+    mapRow: r => {
+      const year = cell(r, 'year');
+      return {
+        topicTitle: cell(r, 'topicTitle'),
+        level: cell(r, 'level').toUpperCase(),
+        subject: cell(r, 'subject'),
+        difficulty: cell(r, 'difficulty').toUpperCase(),
+        question: cell(r, 'question'),
+        options: [1, 2, 3, 4, 5, 6].map(i => cell(r, `option${i}`)).filter(Boolean),
+        answer: cell(r, 'answer'),
+        explanation: cell(r, 'explanation'),
+        year: /^\d{4}$/.test(year) ? parseInt(year) : null,
+      };
+    },
+  },
+  documents: {
+    noun: 'templates',
+    instructions: [
+      'Required columns: title, category, description, template, tags',
+      `Suggested categories: ${DOC_CATEGORIES.join(', ')}`,
+      'Use [PLACEHOLDERS] like [COMPANY NAME], [DATE] in the template body',
+    ],
+    sample: [{
+      title: 'Board Resolution — Change of Registered Office',
+      category: 'RESOLUTION',
+      description: 'Resolution for shifting the registered office within the same city',
+      template: 'CERTIFIED TRUE COPY OF THE RESOLUTION PASSED BY THE BOARD OF DIRECTORS OF [COMPANY NAME] AT ITS MEETING HELD ON [DATE]…',
+      tags: 'board resolution, registered office',
+    }],
+    mapRow: r => ({
+      title: cell(r, 'title'),
+      category: cell(r, 'category').toUpperCase(),
+      description: cell(r, 'description'),
+      template: cell(r, 'template'),
+      tags: cell(r, 'tags'),
+    }),
+  },
+};
+
+function ImportPanel({ kind, onDone }: { kind: Tab; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState('');
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [error, setError] = useState('');
+  const [rowErrors, setRowErrors] = useState<{ row: number; message: string }[]>([]);
+  const [created, setCreated] = useState<number | null>(null);
+
+  const spec = IMPORT_SPECS[kind];
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.json_to_sheet(spec.sample);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Data');
+    XLSX.writeFile(wb, `csvault-${kind}-template.xlsx`);
+  };
+
+  const handleFile = async (file: File) => {
+    setError('');
+    setRowErrors([]);
+    setCreated(null);
+    setRows([]);
+    setFileName('');
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
+      const mapped = raw
+        .filter(r => Object.values(r).some(v => String(v ?? '').trim() !== ''))
+        .map(spec.mapRow);
+      if (mapped.length === 0) {
+        setError('No data rows found — fill in rows below the header row and try again');
+        return;
+      }
+      setRows(mapped);
+      setFileName(file.name);
+    } catch {
+      setError('Could not read that file — make sure it is a valid .xlsx, .xls, or .csv file');
+    }
+  };
+
+  const mutation = useMutation({
+    mutationFn: () => api.post(`/admin/content/${kind}/bulk`, { rows }).then(r => r.data as { created: number }),
+    onSuccess: data => {
+      queryClient.invalidateQueries({ queryKey: [`admin-content-${kind}`] });
+      if (kind === 'questions') queryClient.invalidateQueries({ queryKey: ['admin-content-topics'] });
+      setCreated(data.created);
+      setRows([]);
+    },
+    onError: (err: unknown) => {
+      const e = err as { response?: { data?: { rowErrors?: { row: number; message: string }[] } } };
+      setRowErrors(e?.response?.data?.rowErrors || []);
+      setError(errMessage(err));
+    },
+  });
+
+  return (
+    <div>
+      <ul className="text-xs text-dark-muted space-y-1 list-disc list-inside mb-4">
+        {spec.instructions.map((line, i) => <li key={i}>{line}</li>)}
+        <li>Row 1 must be the header row — download the template to get the exact column names</li>
+      </ul>
+
+      <div className="flex flex-wrap gap-2">
+        <button className="btn-secondary flex items-center gap-2 text-sm" onClick={downloadTemplate}>
+          <Download size={15} /> Download Template
+        </button>
+        <button className="btn-secondary flex items-center gap-2 text-sm" onClick={() => fileRef.current?.click()}>
+          <FileSpreadsheet size={15} /> Choose Excel File
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) handleFile(file);
+            e.target.value = '';
+          }}
+        />
+      </div>
+
+      {rows.length > 0 && (
+        <div className="flex items-center gap-3 bg-dark-border/30 border border-dark-border rounded-lg px-3 py-2 mt-4 text-sm">
+          <FileSpreadsheet size={16} className="text-primary-400 shrink-0" />
+          <span className="text-dark-text flex-1 truncate">
+            {fileName} — <span className="font-medium">{rows.length}</span> {spec.noun} ready to import
+          </span>
+        </div>
+      )}
+
+      {created !== null && (
+        <div className="flex items-center gap-2 bg-green-900/30 border border-green-800 text-green-400 text-sm rounded-lg px-3 py-2 mt-4">
+          <CheckCircle2 size={16} className="shrink-0" />
+          Imported {created} {spec.noun} successfully
+        </div>
+      )}
+
+      {error && <div className="bg-red-900/30 border border-red-800 text-red-400 text-sm rounded-lg px-3 py-2 mt-4">{error}</div>}
+      {rowErrors.length > 0 && (
+        <div className="border border-red-800/50 rounded-lg mt-2 max-h-48 overflow-y-auto">
+          {rowErrors.map((e, i) => (
+            <div key={i} className="text-xs text-red-400 px-3 py-1.5 border-b border-red-800/30 last:border-b-0">
+              <span className="font-semibold">Row {e.row}:</span> {e.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex gap-2 mt-4">
+        {rows.length > 0 && (
+          <button className="btn-primary flex items-center gap-2" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+            <Upload size={15} /> {mutation.isPending ? 'Importing…' : `Import ${rows.length} ${spec.noun}`}
+          </button>
+        )}
+        <button className="btn-secondary" onClick={onDone}>{created !== null ? 'Done' : 'Cancel'}</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────
 
 export default function AdminContent() {
   const [tab, setTab] = useState<Tab>('topics');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<{ kind: Tab; item: AdminTopic | AdminQuestion | AdminDocument | null } | null>(null);
+  const [importing, setImporting] = useState<Tab | null>(null);
   const queryClient = useQueryClient();
 
   const { data: topics = [] } = useQuery<AdminTopic[]>({
@@ -386,6 +620,9 @@ export default function AdminContent() {
         </div>
         <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => setEditing({ kind: tab, item: null })}>
           <Plus size={15} /> {addLabel}
+        </button>
+        <button className="btn-secondary flex items-center gap-2 text-sm" onClick={() => setImporting(tab)}>
+          <Upload size={15} /> Import Excel
         </button>
       </div>
 
@@ -508,6 +745,11 @@ export default function AdminContent() {
       {editing?.kind === 'documents' && (
         <Modal title={editing.item ? 'Edit Template' : 'New Template'} onClose={() => setEditing(null)}>
           <DocumentForm initial={editing.item as AdminDocument | null} onDone={() => setEditing(null)} />
+        </Modal>
+      )}
+      {importing && (
+        <Modal title={`Import ${{ topics: 'Topics', questions: 'Questions', documents: 'Templates' }[importing]} from Excel`} onClose={() => setImporting(null)}>
+          <ImportPanel kind={importing} onDone={() => setImporting(null)} />
         </Modal>
       )}
     </div>
