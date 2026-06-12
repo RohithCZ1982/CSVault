@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  Users, UserCheck, UserPlus, Brain, Shield, Clock, Pencil,
+  Users, UserCheck, UserPlus, Brain, Shield, Clock, Pencil, Database,
 } from 'lucide-react';
 import { api } from '../utils/api';
 import { PLAN_LABELS, Plan } from '../utils/plans';
@@ -151,15 +152,18 @@ export default function AdminDashboard() {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center gap-3"
+        className="flex flex-wrap items-center gap-3"
       >
         <div className="w-10 h-10 bg-gradient-to-br from-red-600 to-red-800 rounded-lg flex items-center justify-center">
           <Shield className="w-5 h-5 text-white" />
         </div>
-        <div>
+        <div className="flex-1">
           <h2 className="text-xl font-bold text-white">Admin Dashboard</h2>
           <p className="text-sm text-dark-muted">Registered users, progress and activity</p>
         </div>
+        <Link to="/admin/content" className="btn-secondary flex items-center gap-2 text-sm">
+          <Database size={15} /> Manage Content
+        </Link>
       </motion.div>
 
       {/* Stat cards */}

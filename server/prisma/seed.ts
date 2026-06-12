@@ -1489,6 +1489,18 @@ Note: This report is to be read with our letter of even date which is annexed as
 async function main() {
   console.log('Seeding database...');
 
+  // Content is only seeded into an empty database so admin edits are never
+  // overwritten. Set FORCE_SEED=1 to wipe and recreate all content
+  // (also deletes user progress, bookmarks, and test answer details).
+  const existingTopics = await prisma.topic.count();
+  if (existingTopics > 0 && process.env.FORCE_SEED !== '1') {
+    console.log(`Content already present (${existingTopics} topics) — skipping content seed.`);
+    console.log('Set FORCE_SEED=1 to wipe and reseed content.');
+    await upsertAdmin();
+    console.log('Seeding complete!');
+    return;
+  }
+
   // Delete in dependency order: children referencing questions/topics first
   await prisma.testResultItem.deleteMany();
   await prisma.progress.deleteMany();
@@ -1522,6 +1534,12 @@ async function main() {
   );
   console.log(`Created ${createdDocs.length} documents`);
 
+  await upsertAdmin();
+
+  console.log('Seeding complete!');
+}
+
+async function upsertAdmin() {
   const adminEmail = process.env.ADMIN_EMAIL || 'admin@csvault.com';
   const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@123';
   await prisma.user.upsert({
@@ -1537,8 +1555,6 @@ async function main() {
     },
   });
   console.log(`Admin user ready: ${adminEmail}`);
-
-  console.log('Seeding complete!');
 }
 
 main()

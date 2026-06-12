@@ -14,6 +14,7 @@ import StudyPlanner from './pages/StudyPlanner';
 import ComplianceSimulator from './pages/ComplianceSimulator';
 import Profile from './pages/Profile';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminContent from './pages/AdminContent';
 import { hasFeature, Feature } from './utils/plans';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -56,6 +57,7 @@ export default function App() {
                   <Route path="/compliance-simulator" element={<FeatureRoute feature="compliance"><ComplianceSimulator /></FeatureRoute>} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+                  <Route path="/admin/content" element={<AdminRoute><AdminContent /></AdminRoute>} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
               </Layout>

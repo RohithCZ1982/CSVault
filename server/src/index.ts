@@ -12,6 +12,7 @@ import { progressRouter } from './routes/progress';
 import { testRouter } from './routes/tests';
 import { studyPlanRouter } from './routes/studyPlan';
 import { adminRouter } from './routes/admin';
+import { adminContentRouter } from './routes/adminContent';
 import { authMiddleware } from './middleware/auth';
 import { requireActivePlan, requireFeature } from './middleware/plan';
 
@@ -34,6 +35,7 @@ app.use('/api/progress', authMiddleware, requireActivePlan, progressRouter);
 app.use('/api/tests', authMiddleware, requireActivePlan, testRouter);
 app.use('/api/study-plan', authMiddleware, requireFeature('studyPlanner'), studyPlanRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/admin/content', adminContentRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok', version: '1.0.0' }));
 

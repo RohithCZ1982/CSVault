@@ -214,3 +214,23 @@ Instead of steps 1–3, you can let Render create everything from `render.yaml`:
 4. Continue from [step 4 (seeding)](#4-seed-the-database-one-time).
 
 The manual path above is useful when you want different names/regions, an existing database, or to understand what each piece does.
+
+
+What it is: a single file, server/scripts/db-tool.mjs — a local web page (dark-themed, matching the app) where you:
+
+Paste the External Database URL (masked input; ?sslmode=require is added automatically if missing)
+Optionally set custom admin email/password for the seed
+Click Test Connection (safe, runs SELECT 1) or Push Schema + Seed
+The seed button handles everything that previously required the manual dance:
+
+Temporarily switches schema.prisma to postgresql and regenerates the Prisma client
+Runs prisma db push to create/update tables on the remote DB
+Runs the seed (10 topics, 60 questions, 6 documents, admin user)
+Always restores your local schema to sqlite and regenerates — even if a step fails — so local dev keeps working
+Command output streams live into the page, and the seed button asks for confirmation since reseeding wipes topics/questions/documents and user progress on the target (accounts are kept).
+
+To start it anytime later:
+
+
+cd server
+npm run db:tool

@@ -87,11 +87,12 @@ async function testConnection(url) {
   });
 }
 
-async function pushAndSeed(url, adminEmail, adminPassword) {
+async function pushAndSeed(url, adminEmail, adminPassword, force) {
   const originalProvider = currentProvider();
   const env = { DATABASE_URL: url };
   if (adminEmail) env.ADMIN_EMAIL = adminEmail;
   if (adminPassword) env.ADMIN_PASSWORD = adminPassword;
+  if (force) env.FORCE_SEED = '1';
 
   try {
     setProvider('postgresql');
@@ -165,8 +166,12 @@ const PAGE = /* html */ `<!DOCTYPE html>
       <button class="primary" id="testBtn" onclick="act('test')">Test Connection</button>
       <button class="danger" id="seedBtn" onclick="act('seed')">Push Schema + Seed</button>
     </div>
+    <label style="display:flex;align-items:center;gap:.5rem;margin-top:.9rem;cursor:pointer">
+      <input id="force" type="checkbox" style="width:auto" />
+      <span style="font-size:.8rem;color:#fbbf24">Force reseed — wipe existing topics/questions/documents (and user progress) even if content already exists</span>
+    </label>
     <div class="warn">
-      ⚠️ <b>Seeding deletes and recreates all topics, questions, and documents</b> — and with them all user progress, bookmarks, and test answer details on the target database. Users and the admin account are kept. Stop the local dev server first (it locks the Prisma engine).
+      ℹ️ Seeding only inserts content into an <b>empty</b> database — existing content edited via the Admin panel is never overwritten unless "Force reseed" is checked. Users and the admin account are always kept. Stop the local dev server first (it locks the Prisma engine).
     </div>
   </div>
 
@@ -193,7 +198,8 @@ const PAGE = /* html */ `<!DOCTYPE html>
   async function act(kind) {
     const url = document.getElementById('url').value.trim();
     if (!url) return alert('Paste the external database URL first.');
-    if (kind === 'seed' && !confirm('This will WIPE topics/questions/documents and all user progress on the target database, then reseed. Continue?')) return;
+    const force = document.getElementById('force').checked;
+    if (kind === 'seed' && force && !confirm('Force reseed will WIPE topics/questions/documents and all user progress on the target database. Continue?')) return;
     setBusy(true, kind === 'seed' ? 'Seeding…' : 'Testing connection…');
     try {
       const res = await fetch('/run', {
@@ -204,6 +210,7 @@ const PAGE = /* html */ `<!DOCTYPE html>
           url,
           adminEmail: document.getElementById('adminEmail').value.trim(),
           adminPassword: document.getElementById('adminPassword').value,
+          force,
         }),
       });
       const data = await res.json();
@@ -247,14 +254,14 @@ const server = http.createServer(async (req, res) => {
       running = true;
       let ok = true;
       try {
-        const { action, url, adminEmail, adminPassword } = JSON.parse(body);
+        const { action, url, adminEmail, adminPassword, force } = JSON.parse(body);
         const dbUrl = normalizeUrl(url);
         if (action === 'test') {
           log('── Testing connection…');
           await testConnection(dbUrl);
           log('✅ Connection successful.');
         } else if (action === 'seed') {
-          await pushAndSeed(dbUrl, adminEmail, adminPassword);
+          await pushAndSeed(dbUrl, adminEmail, adminPassword, force);
         } else {
           throw new Error(`Unknown action: ${action}`);
         }
