@@ -11,7 +11,9 @@ services:
     runtime: node
     rootDir: server
     plan: free
-    buildCommand: npm install && npm run build
+    # --include=dev: NODE_ENV=production makes npm skip devDependencies (typescript, @types/*) otherwise
+    # sed: repo schema uses sqlite for local dev; production runs on PostgreSQL
+    buildCommand: sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma && npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
